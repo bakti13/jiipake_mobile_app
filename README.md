@@ -1,6 +1,6 @@
 # jiipake_app
 
-A new Flutter application.
+A simple app about protocol j-Pake in android app.
 
 ## Getting Started
 
