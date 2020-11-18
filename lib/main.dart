@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import 'package:flutter/material.dart';
 import 'package:jiipake_app/exchange.dart';
@@ -72,76 +73,102 @@ class _MyHomePageState extends State<MyHomePage> {
               ),
             ),
             StreamBuilder(
-              stream: widget.channel,
-              builder: (context, snapshot) {
-                String message =
-                    snapshot.hasData ? String.fromCharCodes(snapshot.data) : '';
+                stream: widget.channel,
+                builder: (context, snapshot) {
+                  String message = snapshot.hasData
+                      ? String.fromCharCodes(snapshot.data)
+                      : '';
+                  bool valid = false;
+                  if (message.startsWith('{')) {
+                    // valid = false;
+                    Map<String, dynamic> fromJson = jsonDecode(message);
+                    //check if return gx2
+                    if (fromJson.containsKey("gx1")) {
+                      // valid = false;
+                      // print(' message 1: $message');
+                      // print('receiving from server messege1');
+                      BigInt gx1 = BigInt.parse(fromJson['gx1'].toString());
+                      gx2 = BigInt.parse(fromJson['gx2'].toString());
+                      List<BigInt> sigX1 = List<String>.from(fromJson['ZKP1'])
+                          .map((data) => BigInt.parse(data))
+                          .toList();
+                      List<BigInt> sigX2 = List<String>.from(fromJson['ZKP2'])
+                          .map((data) => BigInt.parse(data))
+                          .toList();
+                      result += "Receiving g^{x1}, g^{x2} from Server\n";
 
-                if (message.startsWith('{')) {
-                  Map<String, dynamic> fromJson = jsonDecode(message);
-                  //check if return gx2
-                  if (fromJson.containsKey("gx1")) {
-                    // print(' message 1: $message');
-                    // print('receiving from server messege1');
-                    BigInt gx1 = BigInt.parse(fromJson['gx1'].toString());
-                    gx2 = BigInt.parse(fromJson['gx2'].toString());
-                    List<BigInt> sigX1 = List<String>.from(fromJson['ZKP1'])
-                        .map((data) => BigInt.parse(data))
-                        .toList();
-                    List<BigInt> sigX2 = List<String>.from(fromJson['ZKP2'])
-                        .map((data) => BigInt.parse(data))
-                        .toList();
-                    result += "Receiving g^{x1}, g^{x2} from Server\n";
+                      if (widget.exchange.cekZKP(gx1, gx2, sigX1, sigX2)) {
+                        // valid = false;
+                        // print("**********ZKP VALID*******");
+                        Map<String, dynamic> roundTwo = _roundTwo(gx1);
+                        result += "verifies Server's ZKPs : OK\n";
+                        widget.channel.writeln(JsonEncoder().convert(roundTwo));
+                      }
+                    } else if (fromJson.containsKey("A")) {
+                      // valid = false;
+                      // print(' message 2: $message');
+                      A = BigInt.parse(fromJson['A'].toString());
+                      BigInt gA = BigInt.parse(fromJson['gA'].toString());
+                      List<BigInt> sigX2s =
+                          List<String>.from(fromJson['KP{x2*s}'])
+                              .map((data) => BigInt.parse(data))
+                              .toList();
 
-                    if (widget.exchange.cekZKP(gx1, gx2, sigX1, sigX2)) {
-                      // print("**********ZKP VALID*******");
-                      Map<String, dynamic> roundTwo = _roundTwo(gx1);
-                      result += "verifies Server's ZKPs : OK\n";
-                      widget.channel.writeln(JsonEncoder().convert(roundTwo));
+                      result += "Receiving A and KP{x2*s} from Server\n";
+
+                      if (widget.exchange.chekZKPs(gA, A, sigX2s)) {
+                        // valid = false;
+                        hashKeys = widget.exchange.getSessionKeys(
+                            gx2,
+                            x4,
+                            A,
+                            BigInt.parse(
+                                (_controller.text.codeUnits).join("")));
+                        // sleep(const Duration(milliseconds: 200));
+                        var date = DateTime.fromMillisecondsSinceEpoch(
+                            (DateTime.now().millisecondsSinceEpoch));
+                        String keyStr = '${hashKeys.toString()};$date';
+
+                        result += "verifies Server's KP{x2*s} : OK\n";
+                        result += "**********************\n";
+                        result += "Generating key:\n";
+                        result += '$keyStr\n';
+                        result += "**********************\n";
+                        widget.channel.writeln(keyStr);
+                      } else {
+                        // print("********** ZKPs NOT VALID*******");
+                      }
                     }
-                  } else if (fromJson.containsKey("A")) {
-                    // print(' message 2: $message');
-                    A = BigInt.parse(fromJson['A'].toString());
-                    BigInt gA = BigInt.parse(fromJson['gA'].toString());
-                    List<BigInt> sigX2s =
-                        List<String>.from(fromJson['KP{x2*s}'])
-                            .map((data) => BigInt.parse(data))
-                            .toList();
-
-                    result += "Receiving A and KP{x2*s} from Server\n";
-
-                    if (widget.exchange.chekZKPs(gA, A, sigX2s)) {
-                      hashKeys = widget.exchange.getSessionKeys(gx2, x4, A,
-                          BigInt.parse((_controller.text.codeUnits).join("")));
-                      // sleep(const Duration(milliseconds: 200));
-                      var date = DateTime.fromMillisecondsSinceEpoch(
-                          (DateTime.now().millisecondsSinceEpoch));
-                      String keyStr = '${hashKeys.toString()};$date';
-
-                      result += "verifies Server's KP{x2*s} : OK\n";
-                      result += "**********************\n";
-                      result += "Generating key:\n";
-                      result += '$keyStr\n';
-                      result += "**********************\n";
-                      widget.channel.writeln(keyStr);
-                    } else {
-                      // print("********** ZKPs NOT VALID*******");
-                    }
+                  } else if (message.startsWith(new RegExp(r'[0-9]'))) {
+                    // check secret key
+                    valid = _validateKey(message, hashKeys) == "VALID"
+                        ? true
+                        : false;
+                    result += 'Status Key: ${_validateKey(message, hashKeys)}';
+                  } else if (message.isNotEmpty) {
+                    // valid = false;
+                    result += 'Error!!';
                   }
-                } else if (message.startsWith(new RegExp(r'[0-9]'))) {
-                  // check secret key
-                  result += 'Status Key: ${_validateKey(message, hashKeys)}';
-                } else if (message.isNotEmpty) {
-                  result += 'Error!!';
-                }
-                return Expanded(
-                  child: Text(
-                    result,
-                    overflow: TextOverflow.clip,
-                  ),
-                );
-              },
-            )
+                  if (valid) {
+                    return Expanded(
+                      child: Container(
+                        constraints:
+                            BoxConstraints(minWidth: 100, maxWidth: 400),
+                        child: WebView(
+                          initialUrl: 'https://www.google.com/',
+                          javascriptMode: JavascriptMode.unrestricted,
+                        ),
+                      ),
+                    );
+                  } else {
+                    return Expanded(
+                      child: Text(
+                        result,
+                        overflow: TextOverflow.clip,
+                      ),
+                    );
+                  }
+                })
           ],
         ),
       ),
