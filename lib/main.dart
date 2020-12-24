@@ -101,7 +101,10 @@ class _MyHomePageState extends State<MyHomePage> {
                         // valid = false;
                         // print("**********ZKP VALID*******");
                         Map<String, dynamic> roundTwo = _roundTwo(gx1);
-                        result += "verifies Server's ZKPs : OK\n";
+                        var date = DateTime.fromMillisecondsSinceEpoch(
+                            (DateTime.now().millisecondsSinceEpoch));
+                        result += "verifies Server's ZKPs : OK\nTimestamp: ${date}\n";
+
                         widget.channel.writeln(JsonEncoder().convert(roundTwo));
                       }
                     } else if (fromJson.containsKey("A")) {
@@ -129,7 +132,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             (DateTime.now().millisecondsSinceEpoch));
                         String keyStr = '${hashKeys.toString()};$date';
 
-                        result += "verifies Server's KP{x2*s} : OK\n";
+                        result += "verifies Server's KP{x2*s} : OK\nTimestamp: ${date}\n";
                         result += "**********************\n";
                         result += "Generating key:\n";
                         result += '$keyStr\n';
